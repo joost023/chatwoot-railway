@@ -19,15 +19,25 @@ begin
 
   SuperAdmin.where(email: 'joost@dappermotor.com').destroy_all
 
-  sa = SuperAdmin.find_by(email: sa_email)
-  if sa
-    sa.update_columns(encrypted_password: BCrypt::Password.create(sa_password))
-    sa.update_columns(confirmed_at: Time.current) unless sa.confirmed?
-    puts "[SA] Updated: #{sa.email}"
-  else
-    sa = SuperAdmin.create!(email: sa_email, password: sa_password, name: 'Super Admin', confirmed_at: Time.current)
+  sa = SuperAdmin.find_or_initialize_by(email: sa_email)
+  if sa.new_record?
+    # Use a temp password that satisfies Devise validation (requires special char)
+    # then immediately overwrite via update_columns (bypasses all validations)
+    sa.name = 'Super Admin'
+    sa.confirmed_at = Time.current
+    sa.password = 'Setup@Init1!'
+    sa.password_confirmation = 'Setup@Init1!'
+    sa.save!
     puts "[SA] Created: #{sa.email}"
+  else
+    puts "[SA] Found: #{sa.email}"
   end
+  # Always set the real password via update_columns (bypasses Devise validation)
+  sa.update_columns(
+    encrypted_password: BCrypt::Password.create(sa_password),
+    confirmed_at: Time.current,
+    name: 'Super Admin'
+  )
 
   # ── Account: Dapper Motor ───────────────────────────────────────────────────
   account = Account.find_or_create_by!(id: 1) { |a| a.name = 'Dapper Motor' }

@@ -151,12 +151,12 @@ begin
 
   # ── Branding ─────────────────────────────────────────────────────────────
   cfg = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_SHOW_BRANDING')
-  cfg.value = false
+  cfg.value = true
   cfg.save!
   inst = InstallationConfig.find_or_initialize_by(name: 'INSTALLATION_NAME')
   inst.value = 'ecommerce-manager.nl'
   inst.save!
-  puts "[Config] Branding disabled, installation name set"
+  puts "[Config] Branding set to ecommerce-manager.nl"
 
   # ── Mark installation complete (required to bypass onboarding redirect) ──
   # The DashboardController#ensure_installation_onboarding filter redirects when

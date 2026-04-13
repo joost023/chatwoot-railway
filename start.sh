@@ -11,169 +11,155 @@ echo "Running migrations..."
 bundle exec rails db:chatwoot_prepare
 
 echo "Applying installation setup..."
-bundle exec rails runner "
-  # ── Super Admin ───────────────────────────────────────────────────────────────
-  # Always: joost@ecommerce-manager.nl is the designated Super Admin
+bundle exec rails runner - <<'RUBY'
+begin
+  # ── Super Admin ─────────────────────────────────────────────────────────────
   sa_email    = ENV.fetch('SUPER_ADMIN_EMAIL', 'joost@ecommerce-manager.nl')
   sa_password = ENV['SUPER_ADMIN_PASSWORD'] or raise 'SUPER_ADMIN_PASSWORD env var is required'
 
-  # Remove temporary joost@dappermotor.com super admin
   SuperAdmin.where(email: 'joost@dappermotor.com').destroy_all
 
   sa = SuperAdmin.find_by(email: sa_email)
   if sa
     sa.update_columns(encrypted_password: BCrypt::Password.create(sa_password))
     sa.update_columns(confirmed_at: Time.current) unless sa.confirmed?
-    puts \"[SA] Updated: #{sa.email}\"
+    puts "[SA] Updated: #{sa.email}"
   else
-    sa = SuperAdmin.create!(
-      email: sa_email, password: sa_password,
-      name: 'Super Admin', confirmed_at: Time.current
-    )
-    puts \"[SA] Created: #{sa.email}\"
+    sa = SuperAdmin.create!(email: sa_email, password: sa_password, name: 'Super Admin', confirmed_at: Time.current)
+    puts "[SA] Created: #{sa.email}"
   end
 
-  # ── Account: Dapper Motor (id:1) ─────────────────────────────────────────────
-  account = Account.find_or_create_by!(id: 1) do |a|
-    a.name = 'Dapper Motor'
-  end
-  if account.name != 'Dapper Motor'
-    account.update!(name: 'Dapper Motor')
-    puts \"[Account] Renamed to 'Dapper Motor'\"
-  else
-    puts \"[Account] OK: #{account.id} = #{account.name}\"
-  end
+  # ── Account: Dapper Motor ───────────────────────────────────────────────────
+  account = Account.find_or_create_by!(id: 1) { |a| a.name = 'Dapper Motor' }
+  account.update!(name: 'Dapper Motor') if account.name != 'Dapper Motor'
+  puts "[Account] #{account.id}: #{account.name}"
 
-  # ── Agent Users ───────────────────────────────────────────────────────────────
-  agent_pass = ENV.fetch('DAPPER_AGENT_PASSWORD', SecureRandom.hex(12))
-
-  # Helper: get token string regardless of version
-  def token_str(user)
-    t = user.access_token
+  # ── Helper: get token string ─────────────────────────────────────────────
+  get_token = ->(obj) {
+    t = obj.access_token rescue nil
+    return 'none' unless t
     t.respond_to?(:token) ? t.token : t.to_s
-  rescue
-    'n/a'
-  end
+  }
 
-  # joost@dappermotor.com → Administrator
+  # ── Users ────────────────────────────────────────────────────────────────
+  agent_pass = ENV.fetch('DAPPER_AGENT_PASSWORD', 'ChangeMe!2026x')
+
+  # joost@dappermotor.com
   joost = User.find_by(email: 'joost@dappermotor.com')
   unless joost
-    joost = User.new(
-      name: 'Joost Harmsma',
-      email: 'joost@dappermotor.com',
-      password: agent_pass,
-      password_confirmation: agent_pass,
-      confirmed_at: Time.current
-    )
+    joost = User.new(name: 'Joost Harmsma', email: 'joost@dappermotor.com',
+                     password: agent_pass, password_confirmation: agent_pass,
+                     confirmed_at: Time.current)
+    joost.skip_confirmation!
     joost.save!
-    puts \"[User] Created joost@dappermotor.com\"
-    puts \"[CREDS] joost@dappermotor.com password=#{agent_pass}\"
+    puts "[User] Created: joost@dappermotor.com"
   else
-    puts \"[User] Exists: joost@dappermotor.com token=#{token_str(joost)}\"
+    puts "[User] Exists: joost@dappermotor.com (token=#{get_token.(joost)})"
   end
-  am_joost = AccountMember.find_or_initialize_by(account: account, user: joost)
-  am_joost.role = :administrator; am_joost.save!
 
-  # rik@dappermotor.com → Agent
+  # Add to account as administrator
+  am_joost = account.account_members.find_or_initialize_by(user_id: joost.id)
+  am_joost.role = :administrator
+  am_joost.save!
+  puts "[Member] joost@dappermotor.com → administrator"
+
+  # rik@dappermotor.com
   rik = User.find_by(email: 'rik@dappermotor.com')
   unless rik
-    rik = User.new(
-      name: 'Rik',
-      email: 'rik@dappermotor.com',
-      password: agent_pass,
-      password_confirmation: agent_pass,
-      confirmed_at: Time.current
-    )
+    rik = User.new(name: 'Rik', email: 'rik@dappermotor.com',
+                   password: agent_pass, password_confirmation: agent_pass,
+                   confirmed_at: Time.current)
+    rik.skip_confirmation!
     rik.save!
-    puts \"[User] Created rik@dappermotor.com\"
+    puts "[User] Created: rik@dappermotor.com"
   else
-    puts \"[User] Exists: rik@dappermotor.com\"
+    puts "[User] Exists: rik@dappermotor.com"
   end
-  am_rik = AccountMember.find_or_initialize_by(account: account, user: rik)
-  am_rik.role = :agent; am_rik.save!
 
-  # ── Bot Agent ─────────────────────────────────────────────────────────────────
-  bot = AgentBot.find_by(name: 'DAPPER Bot') || AgentBot.find_by(account: account)
+  am_rik = account.account_members.find_or_initialize_by(user_id: rik.id)
+  am_rik.role = :agent
+  am_rik.save!
+  puts "[Member] rik@dappermotor.com → agent"
+
+  # ── Bot ─────────────────────────────────────────────────────────────────
+  bot = AgentBot.where(account: account).first
   unless bot
     bot = AgentBot.create!(
       name: 'DAPPER Bot',
       account: account,
       outgoing_url: 'https://api.dappermotor.com/webhooks/chatwoot'
     )
-    puts \"[Bot] Created DAPPER Bot\"
+    puts "[Bot] Created: DAPPER Bot"
   else
-    puts \"[Bot] Already exists: #{bot.name}\"
+    puts "[Bot] Exists: #{bot.name}"
   end
-  puts \"[Bot] token=#{bot.access_token}\"
+  bot_token = get_token.(bot)
+  puts "[Bot] token=#{bot_token}"
 
-  # ── Website Inbox ─────────────────────────────────────────────────────────────
-  website_channel = Channel::WebWidget.find_by(account: account)
-  if website_channel
-    inbox = website_channel.inbox
-    puts \"[Inbox] Already exists: #{inbox.name} token=#{website_channel.website_token}\"
+  # ── Website Inbox ────────────────────────────────────────────────────────
+  widget = Channel::WebWidget.find_by(account: account)
+  if widget
+    inbox = widget.inbox
+    puts "[Inbox] Exists: #{inbox.name} website_token=#{widget.website_token}"
   else
-    website_channel = Channel::WebWidget.create!(
-      account: account,
-      website_url: 'https://dappermotor.com',
-      widget_color: '#EF4444'
-    )
+    widget = Channel::WebWidget.create!(account: account, website_url: 'https://dappermotor.com', widget_color: '#EF4444')
     inbox = Inbox.create!(
-      account: account,
-      channel: website_channel,
-      name: 'Dapper Motor Website',
-      channel_type: 'Channel::WebWidget',
-      greeting_enabled: true,
-      greeting_message: 'Hoi! Hoe kan ik je helpen? 👋',
-      enable_email_collect: false,
-      working_hours_enabled: false
+      account: account, channel: widget,
+      name: 'Dapper Motor Website', channel_type: 'Channel::WebWidget',
+      greeting_enabled: true, greeting_message: 'Hoi! Hoe kan ik je helpen? 👋',
+      enable_email_collect: false
     )
-    puts \"[Inbox] Created: #{inbox.name} token=#{website_channel.website_token}\"
+    puts "[Inbox] Created: #{inbox.name} website_token=#{widget.website_token}"
   end
 
   # Connect bot to inbox
-  existing_bot_hook = AgentBotInbox.find_by(inbox: inbox)
-  unless existing_bot_hook
+  unless AgentBotInbox.exists?(inbox: inbox, agent_bot: bot)
     AgentBotInbox.create!(inbox: inbox, agent_bot: bot)
-    puts \"[Bot] Connected to inbox #{inbox.name}\"
-  else
-    puts \"[Bot] Already connected to inbox\"
+    puts "[Bot] Connected to inbox"
   end
 
-  # Add joost as member of inbox
+  # Add agents as inbox members
   InboxMember.find_or_create_by!(inbox: inbox, user: joost)
   InboxMember.find_or_create_by!(inbox: inbox, user: rik)
+  puts "[Inbox] Members: joost + rik added"
 
-  # ── Labels ────────────────────────────────────────────────────────────────────
+  # ── Labels ───────────────────────────────────────────────────────────────
   [
     { title: 'order-question', color: '#3B82F6' },
     { title: 'return-request', color: '#EF4444' },
     { title: 'product-question', color: '#10B981' },
     { title: 'bot-handled', color: '#6B7280' },
     { title: 'escalated', color: '#F59E0B' }
-  ].each do |label_attrs|
-    lbl = Label.find_or_initialize_by(account: account, title: label_attrs[:title])
-    lbl.color = label_attrs[:color]
+  ].each do |attrs|
+    lbl = Label.find_or_initialize_by(account: account, title: attrs[:title])
+    lbl.color = attrs[:color]
     lbl.save!
   end
-  puts \"[Labels] OK\"
+  puts "[Labels] 5 labels OK"
 
-  # ── Disable branding ─────────────────────────────────────────────────────────
-  config = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_SHOW_BRANDING')
-  config.value = false
-  config.save!
-  puts \"[Config] CHATWOOT_SHOW_BRANDING=false\"
+  # ── Branding ─────────────────────────────────────────────────────────────
+  cfg = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_SHOW_BRANDING')
+  cfg.value = false
+  cfg.save!
+  puts "[Config] Branding disabled"
 
-  # ── Final state ──────────────────────────────────────────────────────────────
-  puts '=== TOKENS (copy to Railway Medusa env vars) ==='
-  bot_tok = bot.access_token.respond_to?(:token) ? bot.access_token.token : bot.access_token.to_s
-  joost_tok = token_str(joost)
-  puts \"CHATWOOT_BOT_TOKEN=#{bot_tok}\"
-  puts \"CHATWOOT_USER_TOKEN=#{joost_tok}\"
-  puts \"CHATWOOT_ADMIN_TOKEN=#{joost_tok}\"
-  puts \"CHATWOOT_WEBSITE_TOKEN=#{website_channel.website_token}\"
-  puts \"CHATWOOT_ACCOUNT_ID=#{account.id}\"
-  puts '=== END TOKENS ==='
-" 2>&1 || echo "Warning: setup had errors"
+  # ── Token output ─────────────────────────────────────────────────────────
+  joost_token = get_token.(joost)
+  puts "=== TOKENS ==="
+  puts "CHATWOOT_BOT_TOKEN=#{bot_token}"
+  puts "CHATWOOT_USER_TOKEN=#{joost_token}"
+  puts "CHATWOOT_ADMIN_TOKEN=#{joost_token}"
+  puts "CHATWOOT_WEBSITE_TOKEN=#{widget.website_token}"
+  puts "CHATWOOT_ACCOUNT_ID=#{account.id}"
+  puts "=== END TOKENS ==="
+  puts "Setup complete!"
+
+rescue => e
+  puts "SETUP ERROR: #{e.class}: #{e.message}"
+  puts e.backtrace.first(5).join("\n")
+  exit 0  # non-fatal, allow server to start
+end
+RUBY
 
 echo "Starting services..."
 bundle exec sidekiq -C config/sidekiq.yml &

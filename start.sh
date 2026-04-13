@@ -47,20 +47,29 @@ bundle exec rails runner "
   # ── Agent Users ───────────────────────────────────────────────────────────────
   agent_pass = ENV.fetch('DAPPER_AGENT_PASSWORD', SecureRandom.hex(12))
 
+  # Helper: get token string regardless of version
+  def token_str(user)
+    t = user.access_token
+    t.respond_to?(:token) ? t.token : t.to_s
+  rescue
+    'n/a'
+  end
+
   # joost@dappermotor.com → Administrator
   joost = User.find_by(email: 'joost@dappermotor.com')
   unless joost
-    joost = User.create!(
+    joost = User.new(
       name: 'Joost Harmsma',
       email: 'joost@dappermotor.com',
       password: agent_pass,
       password_confirmation: agent_pass,
       confirmed_at: Time.current
     )
-    puts \"[User] Created joost@dappermotor.com (password logged below)\"
+    joost.save!
+    puts \"[User] Created joost@dappermotor.com\"
     puts \"[CREDS] joost@dappermotor.com password=#{agent_pass}\"
   else
-    puts \"[User] Already exists: joost@dappermotor.com token=#{joost.access_token}\"
+    puts \"[User] Exists: joost@dappermotor.com token=#{token_str(joost)}\"
   end
   am_joost = AccountMember.find_or_initialize_by(account: account, user: joost)
   am_joost.role = :administrator; am_joost.save!
@@ -68,16 +77,17 @@ bundle exec rails runner "
   # rik@dappermotor.com → Agent
   rik = User.find_by(email: 'rik@dappermotor.com')
   unless rik
-    rik = User.create!(
+    rik = User.new(
       name: 'Rik',
       email: 'rik@dappermotor.com',
       password: agent_pass,
       password_confirmation: agent_pass,
       confirmed_at: Time.current
     )
-    puts \"[User] Created rik@dappermotor.com (same password)\"
+    rik.save!
+    puts \"[User] Created rik@dappermotor.com\"
   else
-    puts \"[User] Already exists: rik@dappermotor.com\"
+    puts \"[User] Exists: rik@dappermotor.com\"
   end
   am_rik = AccountMember.find_or_initialize_by(account: account, user: rik)
   am_rik.role = :agent; am_rik.save!
@@ -155,8 +165,11 @@ bundle exec rails runner "
 
   # ── Final state ──────────────────────────────────────────────────────────────
   puts '=== TOKENS (copy to Railway Medusa env vars) ==='
-  puts \"CHATWOOT_BOT_TOKEN=#{bot.access_token}\"
-  puts \"CHATWOOT_USER_TOKEN=#{joost.access_token}\"
+  bot_tok = bot.access_token.respond_to?(:token) ? bot.access_token.token : bot.access_token.to_s
+  joost_tok = token_str(joost)
+  puts \"CHATWOOT_BOT_TOKEN=#{bot_tok}\"
+  puts \"CHATWOOT_USER_TOKEN=#{joost_tok}\"
+  puts \"CHATWOOT_ADMIN_TOKEN=#{joost_tok}\"
   puts \"CHATWOOT_WEBSITE_TOKEN=#{website_channel.website_token}\"
   puts \"CHATWOOT_ACCOUNT_ID=#{account.id}\"
   puts '=== END TOKENS ==='

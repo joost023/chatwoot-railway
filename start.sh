@@ -155,6 +155,12 @@ begin
   cfg.save!
   puts "[Config] Branding disabled"
 
+  # ── Mark installation complete (required to bypass onboarding redirect) ──
+  cfg2 = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_INSTALLATION_COMPLETE')
+  cfg2.value = true
+  cfg2.save!
+  puts "[Config] Installation marked complete"
+
   # ── Token output ─────────────────────────────────────────────────────────
   joost_token = get_token.(joost)
   puts "=== TOKENS ==="

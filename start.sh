@@ -13,20 +13,14 @@ bundle exec rails db:chatwoot_prepare
 echo "Applying installation setup..."
 bundle exec rails runner "
   puts '=== DATABASE STATE ==='
-  puts \"SuperAdmins: #{SuperAdmin.count}\"
-  SuperAdmin.all.each { |sa| puts \"  SA: #{sa.email} confirmed:#{sa.confirmed?}\" }
-  puts \"Accounts: #{Account.count}\"
-  Account.all.each { |a| puts \"  Account #{a.id}: #{a.name}\" }
-  puts \"Users: #{User.where(type: nil).count rescue User.count}\"
-  (User.where(type: nil) rescue User.all).each do |u|
-    puts \"  User #{u.id}: #{u.email} role:#{u.role} account:#{u.account_id} token:#{u.access_token}\"
-  end
-  puts \"Inboxes: #{Inbox.count}\"
-  Inbox.all.each { |i| puts \"  Inbox #{i.id}: #{i.name} account:#{i.account_id}\" }
-  puts \"Conversations: #{Conversation.count}\"
-  puts \"Messages: #{Message.count rescue 'N/A'}\"
-  puts \"AgentBots: #{AgentBot.count}\"
-  AgentBot.all.each { |b| puts \"  Bot #{b.id}: #{b.name} account:#{b.account_id} token:#{b.access_token}\" }
+  begin; puts \"SuperAdmins: #{SuperAdmin.count}\"; SuperAdmin.all.each { |sa| puts \"  SA: #{sa.email}\" }; rescue => e; puts \"SuperAdmin error: #{e.message}\"; end
+  begin; puts \"Accounts: #{Account.count}\"; Account.all.each { |a| puts \"  Account #{a.id}: #{a.name}\" }; rescue => e; puts \"Account error: #{e.message}\"; end
+  begin; puts \"Users: #{User.count}\"; User.all.each { |u| puts \"  User #{u.id}: #{u.email} role:#{u.role} acc:#{u.account_id} token:#{u.access_token}\" }; rescue => e; puts \"User error: #{e.message}\"; end
+  begin; puts \"Inboxes: #{Inbox.count}\"; Inbox.all.each { |i| puts \"  Inbox #{i.id}: #{i.name} acc:#{i.account_id} type:#{i.channel_type}\" }; rescue => e; puts \"Inbox error: #{e.message}\"; end
+  begin; puts \"Conversations: #{Conversation.count}\"; rescue => e; puts \"Conv error: #{e.message}\"; end
+  begin; puts \"Messages: #{Message.count}\"; rescue => e; puts \"Msg error: #{e.message}\"; end
+  begin; puts \"AgentBots: #{AgentBot.count}\"; AgentBot.all.each { |b| puts \"  Bot #{b.id}: #{b.name} acc:#{b.account_id} token:#{b.access_token}\" }; rescue => e; puts \"Bot error: #{e.message}\"; end
+  begin; puts \"WebWidgets: #{Channel::WebWidget.count}\"; Channel::WebWidget.all.each { |w| puts \"  Widget #{w.id}: token=#{w.website_token} inbox:#{w.inbox_id}\" }; rescue => e; puts \"Widget error: #{e.message}\"; end
   puts '=== END STATE ==='
 
   # ── Super Admin setup ────────────────────────────────────────────────────────

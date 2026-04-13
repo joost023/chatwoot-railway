@@ -156,17 +156,20 @@ begin
   puts "[Config] Branding disabled"
 
   # ── Mark installation complete (required to bypass onboarding redirect) ──
-  # Use update_columns to bypass any callbacks, and also delete the Redis cache key
+  # The DashboardController#ensure_installation_onboarding filter redirects when
+  # Redis::Alfred.get(CHATWOOT_INSTALLATION_ONBOARDING) is truthy.
+  # Fix: DELETE the Redis key so the check returns nil (falsy) and skips redirect.
+  begin
+    Redis::Alfred.delete(Redis::Alfred::CHATWOOT_INSTALLATION_ONBOARDING)
+    puts "[Redis] Deleted CHATWOOT_INSTALLATION_ONBOARDING key"
+  rescue => re
+    puts "[Redis] Warning: #{re.message}"
+  end
+  # Also set in DB as belt-and-suspenders
   ic = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_INSTALLATION_COMPLETE')
   ic.value = true
   ic.save!
-  # Also clear the GlobalConfig cache in case Redis has stale nil
-  begin
-    Rails.cache.delete_matched('global_config*')
-  rescue
-    Rails.cache.clear rescue nil
-  end
-  puts "[Config] Installation marked complete + cache cleared"
+  puts "[Config] Installation marked complete"
 
   # ── Token output ─────────────────────────────────────────────────────────
   joost_token = get_token.(joost)

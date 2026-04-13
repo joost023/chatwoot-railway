@@ -14,16 +14,19 @@ echo "Applying installation setup..."
 bundle exec rails runner "
   puts '=== DATABASE STATE ==='
   puts \"SuperAdmins: #{SuperAdmin.count}\"
-  SuperAdmin.all.each { |sa| puts \"  SA: #{sa.email}\" }
+  SuperAdmin.all.each { |sa| puts \"  SA: #{sa.email} confirmed:#{sa.confirmed?}\" }
   puts \"Accounts: #{Account.count}\"
   Account.all.each { |a| puts \"  Account #{a.id}: #{a.name}\" }
-  puts \"Users: #{User.count}\"
-  User.all.each { |u| puts \"  User #{u.id}: #{u.email} role:#{u.role} account:#{u.account_id} token:#{u.access_token}\" }
+  puts \"Users: #{User.where(type: nil).count rescue User.count}\"
+  (User.where(type: nil) rescue User.all).each do |u|
+    puts \"  User #{u.id}: #{u.email} role:#{u.role} account:#{u.account_id} token:#{u.access_token}\"
+  end
   puts \"Inboxes: #{Inbox.count}\"
   Inbox.all.each { |i| puts \"  Inbox #{i.id}: #{i.name} account:#{i.account_id}\" }
   puts \"Conversations: #{Conversation.count}\"
+  puts \"Messages: #{Message.count rescue 'N/A'}\"
   puts \"AgentBots: #{AgentBot.count}\"
-  AgentBot.all.each { |b| puts \"  Bot #{b.id}: #{b.name} token:#{b.access_token}\" }
+  AgentBot.all.each { |b| puts \"  Bot #{b.id}: #{b.name} account:#{b.account_id} token:#{b.access_token}\" }
   puts '=== END STATE ==='
 
   # ── Super Admin setup ────────────────────────────────────────────────────────
@@ -50,35 +53,34 @@ bundle exec rails runner "
     puts \"Created SuperAdmin: #{sa.email}\"
   end
 
-  # ── Account: Dapper Motor (account_id: 1) ───────────────────────────────────
-  dapper_account = Account.find_by(id: 1)
-  if dapper_account.nil?
-    # Find by name as fallback
-    dapper_account = Account.find_by(name: 'Dapper Motor')
-  end
+  # ── Account: Dapper Motor ────────────────────────────────────────────────────
+  # Find by id:1 first, then by name
+  dapper_account = Account.find_by(id: 1) || Account.find_by(name: 'Dapper Motor')
 
   if dapper_account
-    puts \"Found Dapper Motor account: #{dapper_account.id}\"
+    puts \"Found account #{dapper_account.id}: '#{dapper_account.name}'\"
 
-    # Ensure joost@dappermotor.com is an admin agent in this account
+    # Rename back to Dapper Motor if it was renamed during onboarding
+    if dapper_account.name != 'Dapper Motor'
+      old_name = dapper_account.name
+      dapper_account.update!(name: 'Dapper Motor')
+      puts \"Renamed account from '#{old_name}' to 'Dapper Motor'\"
+    end
+
+    # Ensure joost@dappermotor.com and rik@dappermotor.com are admins
     ['joost@dappermotor.com', 'rik@dappermotor.com'].each do |email|
       user = User.find_by(email: email)
       if user
-        am = AccountMember.find_by(account: dapper_account, user: user)
-        if am
-          puts \"User #{email} already in account (role: #{am.role})\"
-          # Ensure admin role
-          am.update!(role: :administrator) unless am.administrator?
-        else
-          AccountMember.create!(account: dapper_account, user: user, role: :administrator)
-          puts \"Added #{email} to Dapper Motor account as admin\"
-        end
+        am = AccountMember.find_or_initialize_by(account: dapper_account, user: user)
+        am.role = :administrator
+        am.save!
+        puts \"Ensured admin: #{email}\"
       else
-        puts \"User #{email} not found in database (may need to be created manually)\"
+        puts \"User not found: #{email} (not yet created)\"
       end
     end
   else
-    puts \"WARNING: Dapper Motor account not found in database!\"
+    puts \"WARNING: No account found — Dapper Motor account missing from database!\"
   end
 
   # ── Disable branding ─────────────────────────────────────────────────────────

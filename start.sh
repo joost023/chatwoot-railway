@@ -38,15 +38,16 @@ bundle exec rails runner "
 
   sa = SuperAdmin.find_by(email: sa_email)
   if sa
-    puts \"SuperAdmin already exists: #{sa.email}\"
+    # Always sync password from env var (ensures rotated passwords take effect)
+    sa.update_columns(encrypted_password: BCrypt::Password.create(sa_password))
+    sa.update_columns(confirmed_at: Time.current) unless sa.confirmed?
+    puts \"Updated SuperAdmin password: #{sa.email}\"
   else
-    sa = SuperAdmin.create!(email: sa_email, password: sa_password, name: 'Super Admin', confirmed_at: Time.current)
+    sa = SuperAdmin.create!(
+      email: sa_email, password: sa_password,
+      name: 'Super Admin', confirmed_at: Time.current
+    )
     puts \"Created SuperAdmin: #{sa.email}\"
-  end
-  # Ensure super admin email is confirmed (skip Devise confirmation email)
-  unless sa.confirmed?
-    sa.update_columns(confirmed_at: Time.current)
-    puts \"Confirmed SuperAdmin: #{sa.email}\"
   end
 
   # ── Account: Dapper Motor (account_id: 1) ───────────────────────────────────

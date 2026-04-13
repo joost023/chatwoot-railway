@@ -156,10 +156,17 @@ begin
   puts "[Config] Branding disabled"
 
   # ── Mark installation complete (required to bypass onboarding redirect) ──
-  cfg2 = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_INSTALLATION_COMPLETE')
-  cfg2.value = true
-  cfg2.save!
-  puts "[Config] Installation marked complete"
+  # Use update_columns to bypass any callbacks, and also delete the Redis cache key
+  ic = InstallationConfig.find_or_initialize_by(name: 'CHATWOOT_INSTALLATION_COMPLETE')
+  ic.value = true
+  ic.save!
+  # Also clear the GlobalConfig cache in case Redis has stale nil
+  begin
+    Rails.cache.delete_matched('global_config*')
+  rescue
+    Rails.cache.clear rescue nil
+  end
+  puts "[Config] Installation marked complete + cache cleared"
 
   # ── Token output ─────────────────────────────────────────────────────────
   joost_token = get_token.(joost)

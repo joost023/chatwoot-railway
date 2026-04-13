@@ -68,7 +68,7 @@ begin
   end
 
   # Add to account as administrator
-  am_joost = account.account_members.find_or_initialize_by(user_id: joost.id)
+  am_joost = AccountMember.find_or_initialize_by(account_id: account.id, user_id: joost.id)
   am_joost.role = :administrator
   am_joost.availability_status = :online if am_joost.respond_to?(:availability_status=)
   am_joost.save!
@@ -87,7 +87,7 @@ begin
     puts "[User] Exists: rik@dappermotor.com"
   end
 
-  am_rik = account.account_members.find_or_initialize_by(user_id: rik.id)
+  am_rik = AccountMember.find_or_initialize_by(account_id: account.id, user_id: rik.id)
   am_rik.role = :agent
   am_rik.availability_status = :online if am_rik.respond_to?(:availability_status=)
   am_rik.save!
